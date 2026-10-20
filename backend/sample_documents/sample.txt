@@ -1,0 +1,9 @@
+What is Redis?
+
+Redis is an in-memory data store.
+
+It is commonly used for caching, session
+management and real-time applications.
+
+Redis supports different data structures
+such as strings, lists, sets and hashes.
