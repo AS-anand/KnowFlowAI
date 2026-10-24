@@ -1,30 +1,35 @@
-from pathlib import Path
+from contextlib import asynccontextmanager
 
-from app.services.document_processor import DocumentProcessor
-from app.exceptions import DocumentProcessingError
+from fastapi import FastAPI
 
-
-def main():
-
-    backend_root = Path(__file__).resolve().parent.parent
-
-    sample_file = (
-        backend_root
-        / "sample_documents"
-        / "sample.txt"
-    )
-
-    processor = DocumentProcessor()
-
-    try:
-        result = processor.process_document(str(sample_file))
-
-        print("Document processed successfully!")
-        print(result)
-
-    except DocumentProcessingError as exc:
-        print(f"Document processing failed: {exc}")
+from app.api.routes.documents import router as documents_router
+from app.services.document_summarizer import DocumentSummarizer
+from app.services.llm.groq_provider import GroqProvider
 
 
-if __name__ == "__main__":
-    main()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Application startup
+    provider = GroqProvider()
+    app.state.summarizer = DocumentSummarizer(provider)
+
+    yield
+
+    # Application shutdown
+    await provider.close()
+
+
+app = FastAPI(
+    title="KnowFlow AI",
+    description="AI-powered document summarisation API",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+
+@app.get("/health", tags=["Health"])
+async def health_check():
+    return {"status": "ok"}
+
+
+app.include_router(documents_router)
