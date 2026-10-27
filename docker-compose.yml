@@ -1,0 +1,22 @@
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: knowflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: knowflow
+      POSTGRES_USER: knowflow_user
+      POSTGRES_PASSWORD: knowflow_dev_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - knowflow_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knowflow_user -d knowflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  knowflow_postgres_data:

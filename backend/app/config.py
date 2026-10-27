@@ -14,9 +14,14 @@ class Settings:
             "GROQ_MODEL",
             "openai/gpt-oss-20b"
         )
+        self.database_url = os.getenv("DATABASE_URL")
+        
 
         if not self.groq_api_key:
             raise ValueError("GROQ_API_KEY is not configured")
+
+        if not self.database_url:
+            raise ValueError("DATABASE_URL is not configured")
 
 
 settings = Settings()
