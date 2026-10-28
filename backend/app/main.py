@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.api.routes.documents import router as documents_router
 from app.services.document_summarizer import DocumentSummarizer
 from app.services.llm.groq_provider import GroqProvider
+from app.api.routes.uploads import router as uploads_router
 
 
 @asynccontextmanager
@@ -33,3 +34,4 @@ async def health_check():
 
 
 app.include_router(documents_router)
+app.include_router(uploads_router)
