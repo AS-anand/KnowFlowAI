@@ -1,11 +1,13 @@
+import asyncio
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from pypdf.errors import PdfReadError
 
-from app.models.parsed_document import ParsedDocument
+from app.models.ingestion_models import IngestionResponse
 from app.services.pdf_parser import PDFParser
+
 
 router = APIRouter(prefix="/api/v1/documents", tags=["Documents"])
 
@@ -14,15 +16,22 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 @router.post(
     "/upload",
-    response_model=ParsedDocument,
-    status_code=status.HTTP_200_OK
+    response_model=IngestionResponse,
+    status_code=status.HTTP_201_CREATED
 )
-async def upload_pdf(file: UploadFile = File(...)) -> ParsedDocument:
+async def upload_pdf(
+    request: Request,
+    file: UploadFile = File(...)
+) -> IngestionResponse:
+
     if not file.filename or Path(file.filename).suffix.lower() != ".pdf":
         raise HTTPException(
             status_code=400,
             detail="Only PDF files are supported"
         )
+
+    # Preserve only the filename, not any supplied directory path.
+    original_file_name = file.filename.replace("\\", "/").split("/")[-1]
 
     temp_path = None
 
@@ -50,15 +59,39 @@ async def upload_pdf(file: UploadFile = File(...)) -> ParsedDocument:
             )
 
         parser = PDFParser()
-        return parser.parse(str(temp_path))
+
+        # PDF parsing can be CPU-intensive.
+        parsed_document = await asyncio.to_thread(
+            parser.parse,
+            str(temp_path),
+            original_file_name
+        )
+
+        ingestion_service = request.app.state.ingestion_service
+
+        # Embedding and database operations are synchronous.
+        chunks_indexed = await asyncio.to_thread(
+            ingestion_service.ingest,
+            parsed_document
+        )
+
+        return IngestionResponse(
+            document_id=parsed_document.document_id,
+            file_name=parsed_document.file_name,
+            total_pages=parsed_document.total_pages,
+            chunks_indexed=chunks_indexed,
+            message="PDF successfully processed and indexed"
+        )
 
     except HTTPException:
         raise
+
     except (ValueError, PdfReadError) as exc:
         raise HTTPException(
             status_code=400,
             detail=f"Unable to process PDF: {exc}"
         ) from exc
+
     finally:
         if temp_path and temp_path.exists():
             temp_path.unlink()

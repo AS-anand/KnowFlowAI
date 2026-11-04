@@ -126,6 +126,14 @@ Return the source numbers that support your answer.
 
         # Step 8: Append citations to the answer.
         answer = generated_answer.answer.strip()
+        
+        if not answer:
+            if not source_indices:
+                answer = "Information is unavailable in the indexed documents."
+            else:
+                raise ValueError(
+                "LLM returned an empty answer despite providing sources"
+                )
 
         if source_indices:
             citation_text = " ".join(

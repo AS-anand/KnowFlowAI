@@ -1,4 +1,3 @@
-
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -14,6 +13,16 @@ from app.services.embedding_service import EmbeddingService
 from app.services.vector_search_service import VectorSearchService
 from app.services.context_builder import ContextBuilder
 from app.services.rag_service import RAGService
+from app.services.chunking_service import ChunkingService
+from app.services.document_ingestion_service import DocumentIngestionService
+from app.api.routes.auth import router as auth_router
+
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+)
 
 
 @asynccontextmanager
@@ -27,15 +36,23 @@ async def lifespan(app: FastAPI):
         vector_search_service = VectorSearchService()
         context_builder = ContextBuilder()
 
+        
+
+        chunking_service = ChunkingService(chunk_size=500, chunk_overlap=100)
+
+        app.state.ingestion_service = DocumentIngestionService(
+            chunking_service=chunking_service, embedding_service=embedding_service
+        )
+
         # Existing summarization service.
         app.state.summarizer = DocumentSummarizer(provider)
-
-        # New RAG service.
+        
+                # New RAG service.
         app.state.rag_service = RAGService(
             embedding_service=embedding_service,
             vector_search_service=vector_search_service,
             context_builder=context_builder,
-            llm_provider=provider
+            llm_provider=provider,
         )
 
         yield
@@ -48,7 +65,7 @@ app = FastAPI(
     title="KnowFlow AI",
     description="AI-powered document knowledge assistant",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 
@@ -60,3 +77,4 @@ async def health_check():
 app.include_router(documents_router)
 app.include_router(uploads_router)
 app.include_router(rag_router)
+app.include_router(auth_router)

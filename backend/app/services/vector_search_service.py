@@ -1,14 +1,24 @@
 
-import psycopg
+import logging
 
+import psycopg
 from pgvector.psycopg import register_vector
 
 from app.config import settings
 
 
+logger = logging.getLogger(__name__)
+
+
 class VectorSearchService:
 
-    def search(self, query_embedding, top_k: int = 3) -> list[dict]:
+    def search(
+        self,
+        query_embedding,
+        top_k: int = 3
+    ) -> list[dict]:
+
+        logger.info("Vector search started")
 
         with psycopg.connect(settings.database_url) as connection:
             register_vector(connection)
@@ -58,5 +68,22 @@ class VectorSearchService:
                 "chunk_index": chunk_index,
                 "similarity": similarity
             })
+
+        logger.info(
+            "Vector search completed: top_k=%s, results=%s",
+            top_k,
+            len(results)
+        )
+
+        for result in results:
+            logger.info(
+                "Retrieved chunk: id=%s, file=%s, page=%s, "
+                "chunk=%s, similarity=%.4f",
+                result["id"],
+                result["file_name"],
+                result["page_number"],
+                result["chunk_index"],
+                result["similarity"]
+            )
 
         return results

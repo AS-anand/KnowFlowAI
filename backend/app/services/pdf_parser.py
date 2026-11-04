@@ -1,4 +1,3 @@
-
 from pathlib import Path
 from uuid import uuid4
 
@@ -9,7 +8,12 @@ from app.models.parsed_document import ParsedDocument, ParsedPage
 
 class PDFParser:
 
-    def parse(self, file_path: str) -> ParsedDocument:
+    def parse(
+        self,
+        file_path: str,
+        original_file_name: str | None = None
+    ) -> ParsedDocument:
+
         path = Path(file_path)
 
         if not path.exists() or not path.is_file():
@@ -24,6 +28,7 @@ class PDFParser:
             raise ValueError("Encrypted PDFs are not supported")
 
         document_id = str(uuid4())
+        file_name = original_file_name or path.name
 
         pages = []
 
@@ -33,7 +38,7 @@ class PDFParser:
             pages.append(
                 ParsedPage(
                     document_id=document_id,
-                    file_name=path.name,
+                    file_name=file_name,
                     page_number=page_number,
                     content=content.strip()
                 )
@@ -47,7 +52,7 @@ class PDFParser:
 
         return ParsedDocument(
             document_id=document_id,
-            file_name=path.name,
+            file_name=file_name,
             total_pages=len(reader.pages),
             metadata=metadata,
             pages=pages
