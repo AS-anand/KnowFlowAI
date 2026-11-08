@@ -1,5 +1,9 @@
 
 import asyncio
+import psycopg
+from uuid import UUID
+
+from app.config import settings
 
 from app.models.rag_models import (
     GeneratedRAGAnswer,
@@ -27,36 +31,122 @@ class RAGService:
         self.context_builder = context_builder
         self.llm_provider = llm_provider
 
+    def validate_session_ownership(
+        self,
+        session_id: UUID,
+        user_id: UUID
+    ) -> None:
+        with psycopg.connect(settings.database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM sessions
+                    WHERE id = %s
+                      AND user_id = %s;
+                    """,
+                    (session_id, user_id)
+                )
+
+                if cursor.fetchone() is None:
+                    raise ValueError("Session not found")
+
+    def get_session_document_ids(
+        self,
+        session_id: UUID,
+        user_id: UUID
+    ) -> list[UUID]:
+
+        with psycopg.connect(settings.database_url) as connection:
+            with connection.cursor() as cursor:
+
+                # Verify that the session belongs to the user.
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM sessions
+                    WHERE id = %s
+                      AND user_id = %s;
+                    """,
+                    (session_id, user_id)
+                )
+
+                session = cursor.fetchone()
+
+                if session is None:
+                    raise ValueError("Session not found")
+
+                # Retrieve only completed documents attached to this session.
+                cursor.execute(
+                    """
+                    SELECT sd.document_id
+                    FROM session_documents sd
+                    JOIN documents d
+                        ON d.id = sd.document_id
+                    WHERE sd.session_id = %s
+                      AND d.user_id = %s
+                      AND d.status = 'completed';
+                    """,
+                    (session_id, user_id)
+                )
+
+                rows = cursor.fetchall()
+
+        return [row[0] for row in rows]
+
     async def query(
         self,
+        session_id: UUID,
+        user_id: UUID,
         question: str,
-        top_k: int = 3
+        top_k: int = 3,
+        similarity_threshold: float | None = None,
+        min_page: int | None = None,
+        max_page: int | None = None
     ) -> RAGResponse:
 
-        # Step 1: Generate the query embedding.
+        # Step 1: Retrieve documents attached to the user's session.
+        document_ids = await asyncio.to_thread(
+            self.get_session_document_ids,
+            session_id,
+            user_id
+        )
+
+        # No documents attached to this session.
+        if not document_ids:
+            return RAGResponse(
+                answer="No documents are attached to this conversation.",
+                sources=[]
+            )
+
+        # Step 2: Generate the query embedding.
         query_embedding = await asyncio.to_thread(
             self.embedding_service.embed_query,
             question
         )
 
-        # Step 2: Retrieve relevant document chunks.
+        # Step 3: Retrieve chunks only from session documents.
         retrieved_chunks = await asyncio.to_thread(
             self.vector_search_service.search,
             query_embedding,
-            top_k
+            document_ids,
+            top_k,
+            similarity_threshold,
+            min_page,
+            max_page
         )
 
-        # No indexed chunks found.
+        # No relevant indexed chunks found.
         if not retrieved_chunks:
             return RAGResponse(
                 answer="I couldn't find any indexed document information to answer this question.",
                 sources=[]
             )
 
-        # Step 3: Assemble the retrieved context.
+        # Step 4: Assemble the retrieved context.
         context = self.context_builder.build(retrieved_chunks)
 
-        # Step 4: Construct the prompts.
+        # Step 5: Construct the prompts.
         system_prompt = """
 You are KnowFlow, a document question-answering assistant.
 
@@ -88,14 +178,14 @@ Answer the question using the supplied context.
 Return the source numbers that support your answer.
 """
 
-        # Step 5: Generate a structured answer.
+        # Step 6: Generate a structured answer.
         generated_answer = await self.llm_provider.generate_structured(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             response_model=GeneratedRAGAnswer
         )
 
-        # Step 6: Validate the source references.
+        # Step 7: Validate the source references.
         source_indices = generated_answer.source_indices
 
         if len(source_indices) != len(set(source_indices)):
@@ -107,7 +197,7 @@ Return the source numbers that support your answer.
         ):
             raise ValueError("LLM returned an invalid source reference")
 
-        # Step 7: Build citations in the application.
+        # Step 8: Build citations in the application.
         citations = []
 
         for index in source_indices:
@@ -124,15 +214,15 @@ Return the source numbers that support your answer.
                 )
             )
 
-        # Step 8: Append citations to the answer.
+        # Step 9: Append citations to the answer.
         answer = generated_answer.answer.strip()
-        
+
         if not answer:
             if not source_indices:
                 answer = "Information is unavailable in the indexed documents."
             else:
                 raise ValueError(
-                "LLM returned an empty answer despite providing sources"
+                    "LLM returned an empty answer despite providing sources"
                 )
 
         if source_indices:

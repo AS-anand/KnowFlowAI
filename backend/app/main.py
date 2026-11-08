@@ -16,6 +16,8 @@ from app.services.rag_service import RAGService
 from app.services.chunking_service import ChunkingService
 from app.services.document_ingestion_service import DocumentIngestionService
 from app.api.routes.auth import router as auth_router
+from app.core.redis import redis_client
+from app.api.routes.sessions import router as sessions_router
 
 import logging
 
@@ -55,10 +57,16 @@ async def lifespan(app: FastAPI):
             llm_provider=provider,
         )
 
+        redis_client.ping()
+        app.state.redis = redis_client
+
         yield
 
     finally:
-        await provider.close()
+        try:
+            await provider.close()
+        finally:
+            redis_client.close()
 
 
 app = FastAPI(
@@ -78,3 +86,4 @@ app.include_router(documents_router)
 app.include_router(uploads_router)
 app.include_router(rag_router)
 app.include_router(auth_router)
+app.include_router(sessions_router)

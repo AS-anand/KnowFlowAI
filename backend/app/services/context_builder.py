@@ -21,5 +21,6 @@ class ContextBuilder:
         return json.dumps(
             context_sources,
             ensure_ascii=False,
-            indent=2
+            indent=2,
+            default=str
         )

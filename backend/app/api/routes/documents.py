@@ -4,11 +4,14 @@ from app.api.dependencies import get_summarizer
 from app.models.summary_models import DocumentSummary
 from app.models.summarize_request import SummarizeRequest
 from app.services.document_summarizer import DocumentSummarizer
+from fastapi import Depends
+from app.api.dependencies import get_current_user
 
 
 router = APIRouter(
     prefix="/api/v1/documents",
-    tags=["Documents"]
+    tags=["Documents"],
+    dependencies=[Depends(get_current_user)]
 )
 
 
@@ -24,3 +27,4 @@ async def summarize_document(
     result = await summarizer.summarize(request.document_text)
 
     return result
+

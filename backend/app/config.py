@@ -15,6 +15,10 @@ class Settings:
             "openai/gpt-oss-20b"
         )
         self.database_url = os.getenv("DATABASE_URL")
+        self.jwt_secret_key = os.getenv("JWT_SECRET_KEY")
+        self.jwt_algorithm = os.getenv("JWT_ALGORITHM", "HS256")
+        self.access_token_expire_minutes = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
+        self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
         
 
         if not self.groq_api_key:
@@ -22,6 +26,9 @@ class Settings:
 
         if not self.database_url:
             raise ValueError("DATABASE_URL is not configured")
+
+        if not self.jwt_secret_key:
+            raise ValueError("JWT_SECRET_KEY is not configured")
 
 
 settings = Settings()
