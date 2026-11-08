@@ -18,6 +18,7 @@ from app.services.document_ingestion_service import DocumentIngestionService
 from app.api.routes.auth import router as auth_router
 from app.core.redis import redis_client
 from app.api.routes.sessions import router as sessions_router
+from app.services.reranking.reranker_service import RerankerService
 
 import logging
 
@@ -37,6 +38,7 @@ async def lifespan(app: FastAPI):
         embedding_service = EmbeddingService()
         vector_search_service = VectorSearchService()
         context_builder = ContextBuilder()
+        reranker_service = RerankerService()
 
         
 
@@ -55,6 +57,8 @@ async def lifespan(app: FastAPI):
             vector_search_service=vector_search_service,
             context_builder=context_builder,
             llm_provider=provider,
+            reranker_service=reranker_service,
+            rerank_candidate_k=20,
         )
 
         redis_client.ping()
