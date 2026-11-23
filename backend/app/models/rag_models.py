@@ -50,16 +50,30 @@ class RAGQueryRequest(BaseModel):
         return self
 
 
-class GeneratedRAGAnswer(BaseModel):
+
+class GeneratedRAGClaim(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    answer: str = Field(
-        description="Answer grounded in the retrieved document context"
+    claim: str = Field(
+        description="One factual claim in the generated answer"
     )
 
     source_indices: list[int] = Field(
-        description="One-based source numbers supporting the answer"
+        description="One-based retrieved source numbers supporting this claim. Empty if unsupported."
     )
+
+
+class GeneratedRAGAnswer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    claims: list[GeneratedRAGClaim] = Field(
+        description="Factual claims and their supporting retrieved sources"
+    )
+
+    insufficient_information: list[str] = Field(
+        description="Parts of the user's question that cannot be answered from the retrieved context"
+    )
+
 
 
 class SourceCitation(BaseModel):
