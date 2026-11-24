@@ -268,10 +268,9 @@ def remove_document_from_session(
                 DELETE FROM session_documents
                 WHERE session_id = %s
                   AND document_id = %s
-                  AND user_id = %s
                 RETURNING session_id;
                 """,
-                (session_id, document_id, user_id),
+                (session_id, document_id),
             )
 
             if cursor.fetchone() is None:
