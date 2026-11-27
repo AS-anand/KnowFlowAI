@@ -1,38 +1,23 @@
 
+import asyncio
 from uuid import UUID
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    status
-)
+from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.dependencies import (
-    get_rag_service,
-    get_current_user
-)
-
-from app.models.rag_models import (
-    RAGQueryRequest,
-    RAGResponse
-)
-
+from app.api.dependencies import get_rag_service, get_current_user
+from app.models.rag_models import RAGQueryRequest, RAGResponse
 from app.services.rag_service import RAGService
-from app.services.message_service import create_message
-import asyncio
-
-
-router = APIRouter(
-    prefix="/api/v1/rag",
-    tags=["RAG"]
+from app.services.message_service import (
+    create_message,
+    get_recent_session_messages,
+    select_conversation_history,
 )
 
 
-@router.post(
-    "/query",
-    response_model=RAGResponse
-)
+router = APIRouter(prefix="/api/v1/rag", tags=["RAG"])
+
+
+@router.post("/query", response_model=RAGResponse)
 async def query_documents(
     request: RAGQueryRequest,
     current_user: dict = Depends(get_current_user),
@@ -49,40 +34,65 @@ async def query_documents(
             user_id
         )
 
-        # 2. Persist the user's question.
-        create_message(
+        # 2. Retrieve previous messages BEFORE saving
+        #    the current question.
+        previous_messages = await asyncio.to_thread(
+            get_recent_session_messages,
+            request.session_id,
+            user_id,
+            10
+        )
+
+        if previous_messages is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Session not found"
+            )
+
+        # 3. Select history within the character budget.
+        conversation_history = select_conversation_history(
+            previous_messages,
+            max_messages=10,
+            max_characters=8000
+        )
+
+        # 4. Persist the current user question.
+        await asyncio.to_thread(
+            create_message,
             session_id=request.session_id,
             user_id=user_id,
             role="user",
             content=request.question
         )
 
-        # 3. Execute the RAG pipeline.
+        # 5. Execute conversation-aware RAG.
         response = await rag_service.query(
             session_id=request.session_id,
             user_id=user_id,
             question=request.question,
+            conversation_history=conversation_history,
             top_k=request.top_k,
             similarity_threshold=request.similarity_threshold,
             min_page=request.min_page,
             max_page=request.max_page
         )
 
-        # 4. Persist the assistant's answer.
-        create_message(
+        # 6. Persist the assistant response.
+        await asyncio.to_thread(
+            create_message,
             session_id=request.session_id,
             user_id=user_id,
             role="assistant",
             content=response.answer
         )
 
-        # 5. Return the RAG response.
+        # 7. Return response.
         return response
 
     except ValueError as exc:
         if str(exc) == "Session not found":
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=404,
                 detail="Session not found"
             ) from exc
 
